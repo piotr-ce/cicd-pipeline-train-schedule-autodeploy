@@ -77,14 +77,14 @@ pipeline {
                 )
             }
         }
-        post {
-            cleanup {
-                kubernetesDeploy(
-                    configs                 : 'train-schedule-kube-canary.yml',
-                    kubeconfigId            : 'kubeconfig',
-                    enableConfigSubstitution: true
-                )
-            }
-        }
     }
+    post {
+        cleanup {
+            kubernetesDeploy(
+                configs                 : 'train-schedule-kube-canary.yml',
+                kubeconfigId            : 'kubeconfig',
+                enableConfigSubstitution: true
+            )
+        }
+    }    
 }
