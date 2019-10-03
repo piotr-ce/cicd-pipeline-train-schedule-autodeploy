@@ -1,8 +1,10 @@
 pipeline {
     agent any
+    // global job environment variables
     environment {
         //be sure to replace "willbla" with your own Docker Hub username
         DOCKER_IMAGE_NAME = "pio2pio/train-schedule"
+        CANARY_REPLICAS = 0
     }
     stages {
         stage('Build') {
@@ -39,12 +41,8 @@ pipeline {
             }
         }
         stage('CanaryDeploy') {
-            when {
-                branch 'master'
-            }
-            environment { 
-                CANARY_REPLICAS = 3
-            }
+            when        { branch 'master'     }
+            environment { CANARY_REPLICAS = 3 }
             steps {
                 kubernetesDeploy(
                     kubeconfigId: 'kubeconfig',
@@ -53,24 +51,37 @@ pipeline {
                 )
             }
         }
-        stage('DeployToProduction') {
-            when {
-                branch 'master'
-            }
-            environment { 
-                CANARY_REPLICAS = 0
-            }
+        stage('SmokeTest') {
+            when  { branch 'master' }
             steps {
-                input 'Deploy to Production?'
+                script  {
+                    def response = httpRequest (
+                        url: "http://$KUBE_MASTER_IP:8081"
+                        timeout: 20
+                    )
+                    if (response.status != 200)
+                        error("Smoke test against canary http://$KUBE_MASTER_IP:8081 failed")
+                }
+            }
+        }
+        
+        stage('DeployToProduction') {
+            when  { branch 'master' }
+            steps {
+                // input 'Deploy to Production?' // commented out and replaced with smoke-test
                 milestone(1)
                 kubernetesDeploy(
-                    kubeconfigId: 'kubeconfig',
-                    configs: 'train-schedule-kube-canary.yml',
+                    configs                 : 'train-schedule-kube.yml',
+                    kubeconfigId            : 'kubeconfig',
                     enableConfigSubstitution: true
                 )
+            }
+        }
+        post {
+            cleanup {
                 kubernetesDeploy(
-                    kubeconfigId: 'kubeconfig',
-                    configs: 'train-schedule-kube.yml',
+                    configs                 : 'train-schedule-kube-canary.yml',
+                    kubeconfigId            : 'kubeconfig',
                     enableConfigSubstitution: true
                 )
             }
